@@ -1,11 +1,17 @@
-export const enum Direction {
+export enum Direction {
   UP = "UP",
   DOWN = "DOWN",
   RIGHT = "RIGHT",
   LEFT = "LEFT",
 }
 
-export const enum GameRule {
+export enum GameRule {
   WITH_BORDERS = "WITH_BORDERS",
   WITHOUT_BORDERS = "WITHOUT_BORDERS",
+}
+
+export enum Difficulty {
+  EASY = "EASY",
+  MEDIUM = "MEDIUM",
+  HARD = "HARD",
 }
