@@ -401,6 +401,11 @@ export default {
         onStopGame(true);
       } else {
         const wasEating = isSnakeEating();
+        
+        if (wasEating && currentDifficulty.value === Difficulty.HARD) {
+          generateObstacles();
+        }
+        
         store.commit("SNAKE_MOVE", {
           isSnakeEating: wasEating,
           directionTicks:
@@ -434,10 +439,11 @@ export default {
     }
 
     function onStopGame(saveScore: boolean = true) {
+      const wasPlaying = store.state.isPlaying;
       clearInterval(interval);
       store.commit("IS_PLAYING", false);
 
-      if (saveScore && baseScore.value > 0) {
+      if (saveScore && wasPlaying && baseScore.value > 0) {
         store.commit("ADD_TO_LEADERBOARD", {
           score: score.value,
           difficulty: currentDifficulty.value,
