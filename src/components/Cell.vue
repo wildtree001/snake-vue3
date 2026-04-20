@@ -5,7 +5,7 @@
 <script lang="ts">
 import { computed } from "vue";
 import { useStore } from "vuex";
-import { isSnake, isSnack } from "@/utils/index";
+import { isSnake, isSnack, isObstacle } from "@/utils/index";
 
 export default {
   props: {
@@ -32,6 +32,7 @@ export default {
     const store = useStore();
     const snake = computed(() => store.state.snake);
     const snack = computed(() => store.state.snack);
+    const obstacles = computed(() => store.state.obstacles || []);
     const isGameOver = computed(() => store.state.playground.isGameOver);
 
     const classNames = computed(() => ({
@@ -47,6 +48,9 @@ export default {
         : false,
       "grid-cell-snack": snack.value?.coordinate
         ? isSnack(props.coordinateX, props.coordinateY, snack.value)
+        : false,
+      "grid-cell-obstacle": obstacles.value?.length
+        ? isObstacle(obstacles.value, props.coordinateX, props.coordinateY)
         : false,
       "grid-cell-game-over": isGameOver.value,
       "grid-cell-wall": props.isWallCell,
@@ -93,5 +97,10 @@ export default {
 
 .grid-cell-snack {
   background-color: #d87bf0;
+}
+
+.grid-cell-obstacle {
+  background-color: #ff6347;
+  border-radius: 2px;
 }
 </style>

@@ -5,6 +5,46 @@
       <div class="disclaimer">© Copyright 2023 Ekin Karadag</div>
     </div>
     <h1 class="title">SNAKE</h1>
+    
+    <div v-if="!isPlaying" class="difficulty-selector">
+      <label class="difficulty-label">选择难度：</label>
+      <div class="difficulty-buttons">
+        <button
+          class="difficulty-btn"
+          :class="{ active: currentDifficulty === Difficulty.EASY }"
+          @click="selectDifficulty(Difficulty.EASY)"
+        >
+          简单 (1分)
+        </button>
+        <button
+          class="difficulty-btn"
+          :class="{ active: currentDifficulty === Difficulty.MEDIUM }"
+          @click="selectDifficulty(Difficulty.MEDIUM)"
+        >
+          中等 (2分)
+        </button>
+        <button
+          class="difficulty-btn"
+          :class="{ active: currentDifficulty === Difficulty.HARD }"
+          @click="selectDifficulty(Difficulty.HARD)"
+        >
+          困难 (3分)
+        </button>
+      </div>
+    </div>
+    
+    <div v-if="!isPlaying" class="difficulty-info">
+      <span v-if="currentDifficulty === Difficulty.EASY" class="info-text easy">
+        🎮 简单模式：速度正常，无障碍物
+      </span>
+      <span v-else-if="currentDifficulty === Difficulty.MEDIUM" class="info-text medium">
+        ⚡ 中等模式：速度翻倍，无障碍物
+      </span>
+      <span v-else-if="currentDifficulty === Difficulty.HARD" class="info-text hard">
+        🔥 困难模式：速度翻倍，有障碍物
+      </span>
+    </div>
+
     <v-button
       v-if="!isPlaying"
       @click="openPopup"
@@ -33,6 +73,9 @@
     />
     <v-how-to-play-popup v-if="isShowingHowToPlayPopup" @closed="closePopup" />
     <v-playground :score="score" />
+    
+    <v-leaderboard v-if="!isPlaying" />
+    
     <div class="footer">
       <v-social-links class="social-links" />
       <br />
@@ -55,9 +98,14 @@ import {
   ref,
 } from "vue";
 import { useStore } from "vuex";
-import { areSameCoordinates, isSnake } from "@/utils/index";
-import { Direction, GameRule } from "@/store/enums";
-import type { ICoordinate, ISnack, ISnake } from "@/store/interfaces";
+import { 
+  areSameCoordinates, 
+  isSnake, 
+  isCoordinateInList,
+  isCoordinateInAnyObstacle 
+} from "@/utils/index";
+import { Direction, GameRule, Difficulty } from "@/store/enums";
+import type { ICoordinate, ISnack, ISnake, IObstacle } from "@/store/interfaces";
 
 // Components
 import VButton from "@/components/Button.vue";
@@ -65,8 +113,14 @@ import VHowToPlayPopup from "@/components/HowToPlayPopup.vue";
 import VGrid from "@/components/Grid.vue";
 import VPlayground from "@/components/Playground.vue";
 import VSocialLinks from "@/components/SocialLinks.vue";
+import VLeaderboard from "@/components/Leaderboard.vue";
 
 const GRID_SIZE = 35;
+const MIN_OBSTACLE_COUNT = 5;
+const MAX_OBSTACLE_COUNT = 10;
+const MIN_OBSTACLE_SIZE = 2;
+const MAX_OBSTACLE_SIZE = 6;
+
 const DIRECTION_TICKS_WITHOUT_BORDERS = {
   UP: (x: number, y: number) => ({ x, y: y <= 0 ? GRID_SIZE - 1 : y - 1 }),
   DOWN: (x: number, y: number) => ({ x, y: y >= GRID_SIZE - 1 ? 0 : y + 1 }),
@@ -102,6 +156,7 @@ export default {
     VGrid,
     VPlayground,
     VSocialLinks,
+    VLeaderboard,
   },
 
   setup() {
@@ -121,19 +176,30 @@ export default {
     const currentDirection: ComputedRef<string> = computed(
       () => store.state.playground.direction
     );
+    const currentDifficulty: ComputedRef<Difficulty> = computed(
+      () => store.state.difficulty
+    );
     const snack: ComputedRef<ISnack> = computed(() => store.state.snack);
     const snake: ComputedRef<ISnake> = computed(() => store.state.snake);
+    const obstacles: ComputedRef<IObstacle[]> = computed(() => store.state.obstacles || []);
     const snakeHead: ComputedRef<ICoordinate> = computed(
       () => store.state.snake.coordinates[0]
     );
     const snakeTail: ComputedRef<ICoordinate[]> = computed(() =>
       store.state.snake.coordinates.slice(1)
     );
-    const score: ComputedRef<number> = computed(
+    const scoreMultiplier: ComputedRef<number> = computed(
+      () => store.getters.scoreMultiplier
+    );
+    const baseScore: ComputedRef<number> = computed(
       () => store.state.snake?.coordinates?.length - 1
     );
+    const score: ComputedRef<number> = computed(() => {
+      return (baseScore.value || 0) * scoreMultiplier.value;
+    });
     const tickRate: ComputedRef<number> = computed(() => store.state.tickRate);
     const isShowingHowToPlayPopup = ref<boolean>(false);
+    let currentGameRule = GameRule.WITHOUT_BORDERS;
 
     // Interval variable (It will only run once)
     let interval = setInterval(() => {
@@ -160,7 +226,8 @@ export default {
       if (
         snake.value.coordinates.find((snakeCellCoordinate) =>
           areSameCoordinates(snakeCellCoordinate, newCoordinate)
-        )
+        ) ||
+        isCoordinateInAnyObstacle(newCoordinate, obstacles.value)
       )
         newCoordinate = getRandomSnackCoordinate();
 
@@ -202,10 +269,84 @@ export default {
       store.commit("SET_SNACK", snack);
     }
 
+    function generateObstacles() {
+      const obstacles: IObstacle[] = [];
+      const obstacleCount = getRandomNumber(MIN_OBSTACLE_COUNT, MAX_OBSTACLE_COUNT);
+      const allOccupiedCoordinates: ICoordinate[] = [
+        ...snake.value.coordinates,
+      ];
+
+      for (let i = 0; i < obstacleCount; i++) {
+        const obstacle = generateSingleObstacle(allOccupiedCoordinates);
+        if (obstacle) {
+          obstacles.push(obstacle);
+          allOccupiedCoordinates.push(...obstacle.coordinates);
+        }
+      }
+
+      store.commit("SET_OBSTACLES", obstacles);
+    }
+
+    function generateSingleObstacle(occupiedCoordinates: ICoordinate[]): IObstacle | null {
+      const size = getRandomNumber(MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE);
+      const startCoord = getRandomCoordinate();
+      
+      if (isCoordinateInList(startCoord, occupiedCoordinates)) {
+        return null;
+      }
+
+      const coordinates: ICoordinate[] = [startCoord];
+      let lastCoord = startCoord;
+      const directions = [
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: 0, dy: -1 },
+      ];
+
+      for (let i = 1; i < size; i++) {
+        let found = false;
+        const shuffledDirections = [...directions].sort(() => Math.random() - 0.5);
+
+        for (const dir of shuffledDirections) {
+          const newCoord: ICoordinate = {
+            x: lastCoord.x + dir.dx,
+            y: lastCoord.y + dir.dy,
+          };
+
+          if (
+            newCoord.x >= 1 &&
+            newCoord.x < GRID_SIZE - 1 &&
+            newCoord.y >= 1 &&
+            newCoord.y < GRID_SIZE - 1 &&
+            !isCoordinateInList(newCoord, [...coordinates, ...occupiedCoordinates])
+          ) {
+            coordinates.push(newCoord);
+            lastCoord = newCoord;
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) break;
+      }
+
+      if (coordinates.length < MIN_OBSTACLE_SIZE) {
+        return null;
+      }
+
+      return { coordinates };
+    }
+
     function generateInitials() {
       resetGame();
       generateGrid();
       generateSnake();
+      
+      if (currentDifficulty.value === Difficulty.HARD) {
+        generateObstacles();
+      }
+      
       generateSnack();
     }
 
@@ -215,6 +356,10 @@ export default {
 
     function snakeHeadTouchesTail() {
       return isSnake(snakeTail.value, snakeHead.value.x, snakeHead.value.y);
+    }
+
+    function snakeHeadTouchesObstacle() {
+      return isCoordinateInAnyObstacle(snakeHead.value, obstacles.value);
     }
 
     function isSnakeEating() {
@@ -228,6 +373,10 @@ export default {
         snakeHead.value.x < 0 ||
         snakeHead.value.y < 0
       );
+    }
+
+    function selectDifficulty(difficulty: Difficulty) {
+      store.commit("SET_DIFFICULTY", difficulty);
     }
 
     function onChangeDirection(e: any) {
@@ -245,13 +394,15 @@ export default {
     function onTick(gameRule: GameRule) {
       if (
         snakeHeadTouchesTail() ||
+        snakeHeadTouchesObstacle() ||
         (gameRule === GameRule.WITH_BORDERS && isSnakeOutside())
       ) {
         store.commit("GAME_OVER");
-        onStopGame();
+        onStopGame(true);
       } else {
+        const wasEating = isSnakeEating();
         store.commit("SNAKE_MOVE", {
-          isSnakeEating: isSnakeEating(),
+          isSnakeEating: wasEating,
           directionTicks:
             gameRule === GameRule.WITHOUT_BORDERS
               ? DIRECTION_TICKS_WITHOUT_BORDERS
@@ -272,7 +423,8 @@ export default {
     }
 
     function onStartGame(gameRule: GameRule) {
-      onStopGame();
+      currentGameRule = gameRule;
+      onStopGame(false);
       generateInitials();
       store.commit("IS_PLAYING", true);
 
@@ -281,9 +433,18 @@ export default {
       }, tickRate.value);
     }
 
-    function onStopGame() {
+    function onStopGame(saveScore: boolean = true) {
       clearInterval(interval);
       store.commit("IS_PLAYING", false);
+
+      if (saveScore && baseScore.value > 0) {
+        store.commit("ADD_TO_LEADERBOARD", {
+          score: score.value,
+          difficulty: currentDifficulty.value,
+          timestamp: Date.now(),
+          gameRule: currentGameRule,
+        });
+      }
     }
 
     onMounted(() => {
@@ -301,11 +462,14 @@ export default {
       gameRuleWithBorders,
       isPlaying,
       score,
+      currentDifficulty,
+      Difficulty,
       isShowingHowToPlayPopup,
       openPopup,
       closePopup,
       onStartGame,
       onStopGame,
+      selectDifficulty,
     };
   },
 };
@@ -372,5 +536,71 @@ export default {
 
 .footer {
   margin-top: 20px;
+}
+
+.difficulty-selector {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.difficulty-label {
+  color: #ccc;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.difficulty-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.difficulty-btn {
+  padding: 10px 20px;
+  border: 2px solid #444;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.difficulty-btn:hover {
+  border-color: #00d9ff;
+  color: #00d9ff;
+}
+
+.difficulty-btn.active {
+  border-color: #00c700;
+  background-color: rgba(0, 199, 0, 0.2);
+  color: #00c700;
+  box-shadow: 0 0 15px rgba(0, 199, 0, 0.3);
+}
+
+.difficulty-info {
+  margin: 10px 0 20px 0;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.info-text {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.info-text.easy {
+  color: #4caf50;
+}
+
+.info-text.medium {
+  color: #ff9800;
+}
+
+.info-text.hard {
+  color: #f44336;
 }
 </style>
