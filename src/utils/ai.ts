@@ -5,12 +5,24 @@ import {
   getNextPosition,
   isPositionBlocked,
   getAvailableDirections,
-  getDirectionToTarget,
   areSameCoordinates,
 } from "@/utils/index";
 
 const GRID_SIZE = 35;
 const POISON_LIFETIME = 10000;
+
+function getDirections(): Direction[] {
+  return [Direction.UP, Direction.DOWN, Direction.LEFT, Direction.RIGHT];
+}
+
+function getOppositeDirection(dir: Direction): Direction {
+  switch (dir) {
+    case Direction.UP: return Direction.DOWN;
+    case Direction.DOWN: return Direction.UP;
+    case Direction.LEFT: return Direction.RIGHT;
+    case Direction.RIGHT: return Direction.LEFT;
+  }
+}
 
 function evaluateSnack(
   snack: IAdvancedSnack,
@@ -33,10 +45,10 @@ function evaluateSnack(
   }
 
   if (snack.type === SnackType.SHIELD) {
-    return baseScore - 10;
+    return baseScore - 15;
   }
   if (snack.type === SnackType.SPEED) {
-    return baseScore - 5;
+    return baseScore - 10;
   }
 
   return baseScore;
@@ -50,86 +62,115 @@ function findBestTarget(
 ): IAdvancedSnack | null {
   if (snacks.length === 0) return null;
 
-  const sortedSnacks = [...snacks].sort((a, b) => {
+  const validSnacks = snacks.filter(s => {
+    if (difficulty === Difficulty.HARD && s.type === SnackType.POISON) {
+      return false;
+    }
+    return true;
+  });
+
+  if (validSnacks.length === 0) return null;
+
+  validSnacks.sort((a, b) => {
     const scoreA = evaluateSnack(a, aiSnake, difficulty, currentTime);
     const scoreB = evaluateSnack(b, aiSnake, difficulty, currentTime);
     return scoreA - scoreB;
   });
 
-  if (difficulty === Difficulty.HARD) {
-    const validSnacks = sortedSnacks.filter((s) => {
-      const targetDir = getDirectionToTarget(
-        aiSnake.coordinates[0],
-        s.coordinate,
-        aiSnake.direction,
-        GRID_SIZE,
-        false
-      );
-      if (!targetDir) return false;
-
-      const nextPos = getNextPosition(
-        aiSnake.coordinates[0],
-        targetDir,
-        GRID_SIZE,
-        false
-      );
-
-      return !isPositionBlocked(nextPos, aiSnake, aiSnake, GRID_SIZE, false);
-    });
-
-    if (validSnacks.length > 0) {
-      return validSnacks[0];
-    }
-  }
-
-  return sortedSnacks[0];
+  return validSnacks[0];
 }
 
-function predictDanger(
-  snake: IAdvancedSnake,
-  playerSnake: IAdvancedSnake,
+function countSafeFutureMoves(
+  direction: Direction,
   aiSnake: IAdvancedSnake,
+  playerSnake: IAdvancedSnake,
   gridSize: number,
-  steps: number = 3
+  depth: number = 2
+): number {
+  const head = aiSnake.coordinates[0];
+  const nextPos = getNextPosition(head, direction, gridSize, false);
+
+  if (isPositionBlocked(nextPos, playerSnake, aiSnake, gridSize, false)) {
+    return 0;
+  }
+
+  if (depth === 0) {
+    return 1;
+  }
+
+  const futureSnake: IAdvancedSnake = {
+    ...aiSnake,
+    direction: direction,
+    coordinates: [nextPos, ...aiSnake.coordinates.slice(0, -1)],
+  };
+
+  const futureDirs = getAvailableDirections(futureSnake, playerSnake, aiSnake, gridSize, false);
+  let totalMoves = 1;
+
+  for (const dir of futureDirs) {
+    totalMoves += countSafeFutureMoves(dir, futureSnake, playerSnake, gridSize, depth - 1);
+  }
+
+  return totalMoves;
+}
+
+function getDirectPathDirection(
+  from: ICoordinate,
+  to: ICoordinate,
+  currentDirection: Direction,
+  aiSnake: IAdvancedSnake,
+  playerSnake: IAdvancedSnake,
+  gridSize: number
 ): Direction | null {
-  const head = snake.coordinates[0];
-  const availableDirs = getAvailableDirections(snake, playerSnake, aiSnake, gridSize, false);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
 
-  if (availableDirs.length === 0) return null;
+  const horizontalDir: Direction | null = dx > 0 ? Direction.RIGHT : (dx < 0 ? Direction.LEFT : null);
+  const verticalDir: Direction | null = dy > 0 ? Direction.DOWN : (dy < 0 ? Direction.UP : null);
 
-  const safeDirs: Direction[] = [];
+  const candidates: Direction[] = [];
+
+  if (horizontalDir && horizontalDir !== getOppositeDirection(currentDirection)) {
+    candidates.push(horizontalDir);
+  }
+  if (verticalDir && verticalDir !== getOppositeDirection(currentDirection)) {
+    candidates.push(verticalDir);
+  }
+
+  for (const dir of candidates) {
+    const nextPos = getNextPosition(from, dir, gridSize, false);
+    if (!isPositionBlocked(nextPos, playerSnake, aiSnake, gridSize, false)) {
+      return dir;
+    }
+  }
+
+  return null;
+}
+
+function escapeDeadEnd(
+  availableDirs: Direction[],
+  aiSnake: IAdvancedSnake,
+  playerSnake: IAdvancedSnake,
+  gridSize: number
+): Direction {
+  if (availableDirs.length === 0) {
+    return aiSnake.direction;
+  }
+
+  let bestDir = availableDirs[0];
+  let bestMoves = -1;
 
   for (const dir of availableDirs) {
-    let isSafe = true;
-    let currentPos = head;
-    let tempDirection = snake.direction;
-
-    for (let step = 0; step < steps; step++) {
-      const nextPos = getNextPosition(currentPos, tempDirection, gridSize, false);
-      const tempSnake: IAdvancedSnake = {
-        ...snake,
-        direction: tempDirection,
-        coordinates: [nextPos, ...snake.coordinates.slice(0, -1)],
-      };
-
-      if (isPositionBlocked(nextPos, playerSnake, aiSnake, gridSize, false)) {
-        isSafe = false;
-        break;
-      }
-
-      currentPos = nextPos;
-    }
-
-    if (isSafe) {
-      safeDirs.push(dir);
+    const moves = countSafeFutureMoves(dir, aiSnake, playerSnake, gridSize, 2);
+    if (moves > bestMoves) {
+      bestMoves = moves;
+      bestDir = dir;
+    } else if (moves === bestMoves && Math.random() < 0.3) {
+      bestDir = dir;
     }
   }
 
-  if (safeDirs.length > 0) {
-    return safeDirs[Math.floor(Math.random() * safeDirs.length)];
-  }
-
-  return availableDirs[0];
+  return bestDir;
 }
 
 export function getAIDirection(
@@ -145,92 +186,49 @@ export function getAIDirection(
     return aiSnake.direction;
   }
 
-  if (difficulty === Difficulty.HARD) {
-    const dangerDir = predictDanger(aiSnake, playerSnake, aiSnake, GRID_SIZE, 2);
-    if (dangerDir) {
-      return dangerDir;
-    }
-  }
-
-  const targetSnack = findBestTarget(snacks, aiSnake, difficulty, currentTime);
-
-  if (targetSnack) {
-    const targetDir = getDirectionToTarget(
-      aiSnake.coordinates[0],
-      targetSnack.coordinate,
-      aiSnake.direction,
-      GRID_SIZE,
-      false
-    );
-
-    if (targetDir && availableDirs.includes(targetDir)) {
-      if (difficulty === Difficulty.HARD) {
-        const nextPos = getNextPosition(
-          aiSnake.coordinates[0],
-          targetDir,
-          GRID_SIZE,
-          false
-        );
-        if (!isPositionBlocked(nextPos, playerSnake, aiSnake, GRID_SIZE, false)) {
-          return targetDir;
-        }
-      } else {
-        return targetDir;
-      }
-    }
-  }
-
   if (difficulty === Difficulty.EASY) {
-    const goodDirs = availableDirs.filter((dir) => {
-      const nextPos = getNextPosition(
-        aiSnake.coordinates[0],
-        dir,
-        GRID_SIZE,
-        false
-      );
-      return !isPositionBlocked(nextPos, playerSnake, aiSnake, GRID_SIZE, false);
-    });
+    if (Math.random() < 0.25 && availableDirs.length > 0) {
+      return availableDirs[Math.floor(Math.random() * availableDirs.length)];
+    }
 
-    if (goodDirs.length > 0) {
-      if (Math.random() < 0.3) {
-        return goodDirs[Math.floor(Math.random() * goodDirs.length)];
+    const target = findBestTarget(snacks, aiSnake, difficulty, currentTime);
+    if (target) {
+      const dir = getDirectPathDirection(
+        aiSnake.coordinates[0],
+        target.coordinate,
+        aiSnake.direction,
+        aiSnake,
+        playerSnake,
+        GRID_SIZE
+      );
+      if (dir && availableDirs.includes(dir)) {
+        return dir;
+      }
+    }
+
+    return escapeDeadEnd(availableDirs, aiSnake, playerSnake, GRID_SIZE);
+  }
+
+  const target = findBestTarget(snacks, aiSnake, difficulty, currentTime);
+  if (target) {
+    const dir = getDirectPathDirection(
+      aiSnake.coordinates[0],
+      target.coordinate,
+      aiSnake.direction,
+      aiSnake,
+      playerSnake,
+      GRID_SIZE
+    );
+    if (dir && availableDirs.includes(dir)) {
+      const nextPos = getNextPosition(aiSnake.coordinates[0], dir, GRID_SIZE, false);
+      if (!isPositionBlocked(nextPos, playerSnake, aiSnake, GRID_SIZE, false)) {
+        const futureMoves = countSafeFutureMoves(dir, aiSnake, playerSnake, GRID_SIZE, 2);
+        if (futureMoves > 0) {
+          return dir;
+        }
       }
     }
   }
 
-  if (difficulty === Difficulty.HARD) {
-    let bestDir = availableDirs[0];
-    let bestScore = -Infinity;
-
-    for (const dir of availableDirs) {
-      const nextPos = getNextPosition(
-        aiSnake.coordinates[0],
-        dir,
-        GRID_SIZE,
-        false
-      );
-
-      if (isPositionBlocked(nextPos, playerSnake, aiSnake, GRID_SIZE, false)) {
-        continue;
-      }
-
-      const futureSnake: IAdvancedSnake = {
-        ...aiSnake,
-        direction: dir,
-        coordinates: [nextPos, ...aiSnake.coordinates.slice(0, -1)],
-      };
-
-      const futureAvailable = getAvailableDirections(futureSnake, playerSnake, aiSnake, GRID_SIZE, false);
-      const score = futureAvailable.length * 10;
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestDir = dir;
-      }
-    }
-
-    return bestDir;
-  }
-
-  return availableDirs[Math.floor(Math.random() * availableDirs.length)];
+  return escapeDeadEnd(availableDirs, aiSnake, playerSnake, GRID_SIZE);
 }

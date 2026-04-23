@@ -13,7 +13,7 @@
           <div class="table-header">
             <div class="col rank">排名</div>
             <div class="col time">用时</div>
-            <div class="col score">获胜分数</div>
+            <div class="col score">分数</div>
             <div class="col difficulty">难度</div>
           </div>
 
@@ -98,51 +98,54 @@ export default {
 
 <style lang="postcss" scoped>
 .leaderboard-popup {
-  color: #333;
+  color: #ecf0f1;
 }
 
 .leaderboard-title {
   text-align: center;
-  color: #27ae60;
-  font-size: 28px;
-  margin-bottom: 25px;
+  color: #2ecc71;
+  font-size: 26px;
+  margin-bottom: 20px;
+  font-weight: bold;
 }
 
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: #7f8c8d;
+  color: #95a5a6;
 }
 
 .empty-state p {
   margin: 10px 0;
+  font-size: 16px;
 }
 
 .hint {
-  font-size: 14px;
+  font-size: 14px !important;
   opacity: 0.7;
 }
 
 .leaderboard-table {
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .table-header {
   display: flex;
-  background: #27ae60;
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
   color: white;
   font-weight: bold;
-  padding: 12px 0;
+  padding: 14px 0;
+  font-size: 15px;
 }
 
 .table-row {
   display: flex;
   padding: 12px 0;
-  border-bottom: 1px solid #ecf0f1;
-  background: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   transition: background 0.2s;
+  font-size: 14px;
 }
 
 .table-row:last-child {
@@ -150,26 +153,32 @@ export default {
 }
 
 .table-row:hover {
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .col {
   text-align: center;
-  padding: 0 10px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rank {
   flex: 1;
   font-weight: bold;
+  color: #ecf0f1;
 }
 
 .time {
   flex: 2;
   font-family: monospace;
+  color: #3498db;
 }
 
 .score {
   flex: 1;
+  color: #f39c12;
 }
 
 .difficulty {
@@ -177,37 +186,39 @@ export default {
 }
 
 .medal {
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .rank-gold {
-  background: linear-gradient(90deg, #ffd700 0%, transparent 10%);
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.2) 0%, transparent 20%);
 }
 
 .rank-silver {
-  background: linear-gradient(90deg, #c0c0c0 0%, transparent 10%);
+  background: linear-gradient(90deg, rgba(192, 192, 192, 0.2) 0%, transparent 20%);
 }
 
 .rank-bronze {
-  background: linear-gradient(90deg, #cd7f32 0%, transparent 10%);
+  background: linear-gradient(90deg, rgba(205, 127, 50, 0.2) 0%, transparent 20%);
 }
 
 .easy-tag {
-  padding: 4px 10px;
-  background: #e8f5e9;
-  color: #27ae60;
-  border-radius: 12px;
-  font-size: 12px;
+  padding: 5px 12px;
+  background: rgba(39, 174, 96, 0.3);
+  color: #2ecc71;
+  border-radius: 15px;
+  font-size: 13px;
   font-weight: bold;
+  border: 1px solid #27ae60;
 }
 
 .hard-tag {
-  padding: 4px 10px;
-  background: #fee;
+  padding: 5px 12px;
+  background: rgba(231, 76, 60, 0.3);
   color: #e74c3c;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: 15px;
+  font-size: 13px;
   font-weight: bold;
+  border: 1px solid #c0392b;
 }
 
 .action-buttons {
@@ -216,17 +227,18 @@ export default {
 }
 
 .clear-btn {
-  padding: 10px 30px;
-  background: #e74c3c;
-  color: white;
-  border: none;
+  padding: 10px 25px;
+  background: transparent;
+  color: #e74c3c;
+  border: 2px solid #c0392b;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: bold;
   transition: all 0.3s;
 }
 
 .clear-btn:hover {
-  background: #c0392b;
+  background: rgba(231, 76, 60, 0.2);
 }
 </style>
