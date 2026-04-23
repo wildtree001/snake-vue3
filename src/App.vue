@@ -866,6 +866,7 @@ export default {
       gameDuration,
       playerScore,
       aiScore,
+      closeVersusResult,
     };
   },
 };

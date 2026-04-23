@@ -168,6 +168,10 @@ const store = createStore({
       state.gameMode = undefined;
       state.difficulty = undefined;
     },
+    CLEAR_LEADERBOARD(state) {
+      state.leaderboard = [];
+      saveLeaderboard(state.leaderboard);
+    },
   },
 
   getters: {

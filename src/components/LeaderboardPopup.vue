@@ -80,9 +80,7 @@ export default {
 
     function onClear() {
       if (confirm("确定要清空所有排行榜记录吗？")) {
-        localStorage.removeItem("snake_versus_leaderboard");
-        store.commit("ADD_LEADERBOARD_ENTRY", null);
-        window.location.reload();
+        store.commit("CLEAR_LEADERBOARD");
       }
     }
 
