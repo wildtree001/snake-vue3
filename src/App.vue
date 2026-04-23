@@ -47,8 +47,8 @@
     <v-versus-mode-popup v-if="isShowingVersusPopup" @closed="closeVersusPopup" />
     <v-leaderboard-popup v-if="isShowingLeaderboardPopup" @closed="closeLeaderboardPopup" />
 
-    <div v-if="versusPlayground?.isGameOver" class="versus-result">
-      <div class="result-box">
+    <div v-if="versusPlayground?.isGameOver" class="versus-result" @click="closeVersusResult">
+      <div class="result-box" @click.stop>
         <h2 v-if="versusPlayground.winner === SnakeOwner.PLAYER" class="result-title win">
           🎉 恭喜获胜！
         </h2>
@@ -65,6 +65,9 @@
           <p>用时: {{ gameDuration }}</p>
           <p>玩家分数: {{ playerScore }}</p>
           <p>AI分数: {{ aiScore }}</p>
+        </div>
+        <div class="result-buttons">
+          <button class="close-result-btn" @click="closeVersusResult">关闭</button>
         </div>
       </div>
     </div>
@@ -196,6 +199,7 @@ export default {
 
     const gameStartTime = ref<number>(0);
     const gameDuration = ref<string>("00:00");
+    const aiTickCounter = ref<number>(0);
 
     let mainInterval = setInterval(() => {
       clearInterval(mainInterval);
@@ -381,9 +385,23 @@ export default {
       if (isShowingLeaderboardPopup.value) isShowingLeaderboardPopup.value = false;
     }
 
+    function closeVersusResult() {
+      store.commit("RESET_VERSUS_GAME");
+    }
+
     function getRandomSnackType(): SnackType {
-      const types = [SnackType.NORMAL, SnackType.NORMAL, SnackType.SPEED, SnackType.SHIELD, SnackType.POISON];
-      return types[Math.floor(Math.random() * types.length)];
+      const rand = Math.random();
+      if (rand < 0.5) return SnackType.NORMAL;
+      if (rand < 0.7) return SnackType.SPEED;
+      if (rand < 0.85) return SnackType.SHIELD;
+      return SnackType.POISON;
+    }
+
+    function getNonPoisonSnackType(): SnackType {
+      const rand = Math.random();
+      if (rand < 0.6) return SnackType.NORMAL;
+      if (rand < 0.8) return SnackType.SPEED;
+      return SnackType.SHIELD;
     }
 
     function generateInitialVersusSnacks() {
@@ -618,7 +636,9 @@ export default {
         return true;
       });
 
-      const nonPoisonSnacks = updatedSnacks.filter(s => s.type !== SnackType.POISON);
+      let nonPoisonSnacks = updatedSnacks.filter(s => s.type !== SnackType.POISON);
+      let poisonSnacks = updatedSnacks.filter(s => s.type === SnackType.POISON);
+
       while (nonPoisonSnacks.length < 2) {
         const coord = getRandomVersusSnackCoordinate(
           playerSnake.value!,
@@ -627,13 +647,25 @@ export default {
         );
         const newSnack: IAdvancedSnack = {
           coordinate: coord,
-          type: getRandomSnackType(),
+          type: getNonPoisonSnackType(),
           createdAt: now,
         };
         updatedSnacks.push(newSnack);
-        if (newSnack.type !== SnackType.POISON) {
-          nonPoisonSnacks.push(newSnack);
-        }
+        nonPoisonSnacks.push(newSnack);
+      }
+
+      if (poisonSnacks.length === 0 && Math.random() < 0.1) {
+        const coord = getRandomVersusSnackCoordinate(
+          playerSnake.value!,
+          aiSnake.value!,
+          updatedSnacks
+        );
+        const newSnack: IAdvancedSnack = {
+          coordinate: coord,
+          type: SnackType.POISON,
+          createdAt: now,
+        };
+        updatedSnacks.push(newSnack);
       }
 
       return updatedSnacks;
@@ -661,16 +693,32 @@ export default {
 
       const now = Date.now();
       gameDuration.value = formatDuration(now - gameStartTime.value);
+      aiTickCounter.value++;
+
+      if (playerSnake.value && aiSnake.value && snacks.value) {
+        const aiDirection = getAIDirection(
+          aiSnake.value,
+          playerSnake.value,
+          snacks.value,
+          (difficulty.value as Difficulty) || Difficulty.EASY
+        );
+        store.commit("AI_SNAKE_CHANGE_DIRECTION", aiDirection);
+      }
+
+      const isEasyMode = difficulty.value === Difficulty.EASY;
+      const shouldAIMove = !isEasyMode || (aiTickCounter.value % 2 === 0);
 
       let player = updateSnakeEffects(playerSnake.value);
       let ai = updateSnakeEffects(aiSnake.value);
       let currentSnacks = [...snacks.value];
 
       const playerEating = checkEating(player, currentSnacks);
-      const aiEating = checkEating(ai, currentSnacks);
+      const aiEating = shouldAIMove ? checkEating(ai, currentSnacks) : { isEating: false, eatenSnack: null };
 
       player = moveSnake(player, player.direction, playerEating.isEating);
-      ai = moveSnake(ai, ai.direction, aiEating.isEating);
+      if (shouldAIMove) {
+        ai = moveSnake(ai, ai.direction, aiEating.isEating);
+      }
 
       if (playerEating.eatenSnack) {
         player = applySnackEffect(player, playerEating.eatenSnack.type);
@@ -763,16 +811,13 @@ export default {
       closeVersusPopup();
       onStopGame();
       
+      aiTickCounter.value = 0;
       generateVersusInitials(difficulty);
       store.commit("IS_PLAYING", true);
 
       mainInterval = setInterval(() => {
         onVersusTick();
-      }, getEffectiveTickRate(BASE_TICK_RATE, playerSnake.value!, difficulty, SnakeOwner.PLAYER));
-
-      aiInterval = setInterval(() => {
-        onAIMove();
-      }, getEffectiveTickRate(BASE_TICK_RATE, aiSnake.value!, difficulty, SnakeOwner.AI));
+      }, BASE_TICK_RATE);
     }
 
     function onStopGame() {
@@ -973,5 +1018,27 @@ export default {
 .ai-win {
   color: #e74c3c;
   font-size: 24px;
+}
+
+.result-buttons {
+  margin-top: 25px;
+}
+
+.close-result-btn {
+  padding: 12px 40px;
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+}
+
+.close-result-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5);
 }
 </style>
